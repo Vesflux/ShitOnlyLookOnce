@@ -18,6 +18,9 @@ It is not a neural-network framework. It is a compact, hackable SOLO-style featu
 - Use local 3x3 or global visual-field compression.
 - Train from YOLO `.txt` boxes or LabelMe `.json` shapes.
 - Crop annotated objects and stretch them into a normalized SOLO input.
+- Detect objects with one or more SOLO weight files.
+- Save detection result JSON/TXT and optionally draw boxes on images.
+- Calibrate detection thresholds and box scaling from train/val annotation ratios.
 - Save and load generated weights as JSON.
 - Use the newer weighted compression kernel by default.
 - Keep the old equal-neighbor behavior with `--kernel legacy`.
@@ -170,6 +173,112 @@ python solo.py dataset \
 
 The output item includes `source_image`, `annotation_path`, `label`, `bbox`, `crop_mode`, and `pt`.
 
+## Detection
+
+SOLO detection is a proposal-and-match pipeline:
+
+```text
+image -> proposals -> crop each box -> generate pt -> match against one or more weight files -> NMS -> report
+```
+
+Detect one image:
+
+```bash
+python solo.py image.png \
+  --detect weights/yolo_objects.json \
+  --proposal color \
+  --score-threshold 0.999 \
+  --output results/image_result.json
+```
+
+Detect a folder:
+
+```bash
+python solo.py dataset/images \
+  --detect weights/yolo_objects.json \
+  --proposal color \
+  --output results/dataset_result.json
+```
+
+Use multiple weight files at the same time:
+
+```bash
+python solo.py image.png \
+  --detect weights/feed.json weights/crab.json weights/other.json \
+  --proposal both \
+  --output results/multi_weight_result.json
+```
+
+Draw boxes on images:
+
+```bash
+python solo.py image.png \
+  --detect weights/feed.json \
+  --draw-dir results/drawn \
+  --output results/feed_result.json
+```
+
+Hide labels above boxes:
+
+```bash
+python solo.py image.png \
+  --detect weights/feed.json \
+  --draw-dir results/drawn \
+  --hide-labels \
+  --output results/feed_result.json
+```
+
+Useful detection options:
+
+```bash
+python solo.py image.png \
+  --detect weights/feed.json \
+  --proposal color \
+  --score-threshold 0.999 \
+  --nms-threshold 0.35 \
+  --min-box-size 8 \
+  --max-aspect-ratio 4 \
+  --proposal-expand 1.1 \
+  --output results/feed_result.json
+```
+
+For more generic detection, use sliding windows:
+
+```bash
+python solo.py image.png \
+  --detect weights/feed.json \
+  --proposal sliding \
+  --window-sizes 32,48,64 \
+  --stride-ratio 0.5 \
+  --output results/sliding_result.json
+```
+
+## Train/Val Calibration
+
+SOLO can use train/val dataset proportions to periodically correct detection behavior. For example, if train has 1000 images and val has 200 images, SOLO processes one val image for every five train images during calibration.
+
+The calibration currently adjusts:
+
+- score threshold, using matched val detections
+- bbox scale, using predicted-vs-ground-truth area ratio
+
+Example:
+
+```bash
+python solo.py dataset/test/image.png \
+  --detect weights/feed.json \
+  --proposal color \
+  --calibrate-train-images dataset/train/images \
+  --calibrate-val-images dataset/val/images \
+  --calibrate-train-labels dataset/train/labels \
+  --calibrate-val-labels dataset/val/labels \
+  --class-names dataset/classes.txt \
+  --calibration-samples 20 \
+  --output results/calibrated_result.json
+```
+
+Set `--calibration-samples 0` to use all scheduled val images.
+
 ## Python API
 
 ```python
@@ -252,6 +361,16 @@ Important options:
 - `--labels-dir`: label folder for YOLO or LabelMe files
 - `--class-names`: YOLO class names file
 - `--crop-mode stretch`: normalize annotation crops by stretching them to the SOLO input
+- `--detect`: one or more weight files for object detection
+- `--output`: detection result JSON path
+- `--draw-dir`: optional directory for images with drawn boxes
+- `--hide-labels`: draw boxes without label text
+- `--proposal color|sliding|both`: proposal generation mode
+- `--score-threshold`: minimum score for detections
+- `--nms-threshold`: overlap threshold for NMS
+- `--min-box-size`, `--max-box-size`, `--max-aspect-ratio`: proposal shape filters
+- `--calibrate-train-images`, `--calibrate-val-images`: train/val folders for periodic correction
+- `--calibrate-train-labels`, `--calibrate-val-labels`: annotation folders for calibration
 - `--save`: output JSON path
 - `--load`: load an existing JSON weight file
 - `--no-save`: generate without writing a file
