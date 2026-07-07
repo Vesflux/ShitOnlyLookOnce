@@ -7,5 +7,6 @@ env/
 
 solo_weights.json
 weights/
+outputs/
 train/
 *.log
